@@ -1,6 +1,6 @@
 from opsmate.dino.types import ToolCall, PresentationMixin
 import httpx
-from typing import Dict, List
+from typing import Dict, List, Any
 from pydantic import Field
 import json
 import html2text
@@ -34,7 +34,7 @@ class HttpGet(HttpBase):
         resp = await self.aconn().get(self.url)
         return HttpResponse(status_code=resp.status_code, text=resp.text)
 
-    def markdown(self):
+    def markdown(self, context: Dict[str, Any] = {}):
         return f"""
 ### HTTP GET
 
@@ -85,7 +85,7 @@ class HttpCall(HttpBase):
         )
         return HttpResponse(status_code=resp.status_code, text=resp.text)
 
-    def markdown(self):
+    def markdown(self, context: Dict[str, Any] = {}):
         return f"""
 ### HTTP {self.method}
 
@@ -112,7 +112,7 @@ class HtmlToText(HttpBase):
             status_code=resp.status_code, text=html2text.html2text(resp.text)
         )
 
-    def markdown(self):
+    def markdown(self, context: Dict[str, Any] = {}):
         return f"""
 ### HTML to Text
 
@@ -133,7 +133,7 @@ resp code: {self.output.status_code}
 class Fs(ToolCall[str], PresentationMixin):
     """Fs tool allows you to read and write to the filesystem"""
 
-    def markdown(self): ...
+    def markdown(self, context: Dict[str, Any] = {}): ...
 
 
 class FileRead(Fs):
@@ -145,7 +145,7 @@ class FileRead(Fs):
         with open(self.path, "r") as f:
             return f.read()
 
-    def markdown(self):
+    def markdown(self, context: Dict[str, Any] = {}):
         return f"""
 ### File Read
 
@@ -171,7 +171,7 @@ class FileWrite(Fs):
         with open(self.path, "w") as f:
             f.write(self.data)
 
-    def markdown(self):
+    def markdown(self, context: Dict[str, Any] = {}):
         return f"""
 ### File Written
 
@@ -197,7 +197,7 @@ class FileAppend(Fs):
         with open(self.path, "a") as f:
             f.write(self.data)
 
-    def markdown(self):
+    def markdown(self, context: Dict[str, Any] = {}):
         return f"""
 ### File Appended
 
@@ -234,7 +234,7 @@ class FilesList(Fs):
                 file_list.extend(os.path.join(rel_path, f) for f in files)
         return "\n".join(file_list)
 
-    def markdown(self):
+    def markdown(self, context: Dict[str, Any] = {}):
         return f"""
 ### List Files
 
@@ -263,7 +263,7 @@ class FilesFind(Fs):
                     found.append(os.path.join(root, file))
         return "\n".join(found)
 
-    def markdown(self):
+    def markdown(self, context: Dict[str, Any] = {}):
         return f"""
 ### Find File
 
@@ -292,7 +292,7 @@ class FileDelete(Fs):
         else:
             os.remove(self.path)
 
-    def markdown(self):
+    def markdown(self, context: Dict[str, Any] = {}):
         return f"""
 ### File Deleted
 
@@ -311,7 +311,7 @@ class SysStats(Fs):
         stats = os.stat(self.path)
         return str(stats)
 
-    def markdown(self):
+    def markdown(self, context: Dict[str, Any] = {}):
         return f"""
 ### File Stats
 
@@ -340,7 +340,7 @@ class SysChdir(Fs):
             self._prev_dir = None
         os.chdir(self.path)
 
-    def markdown(self):
+    def markdown(self, context: Dict[str, Any] = {}):
         return f"""
 ### Current Directory
 
@@ -370,7 +370,7 @@ class SysEnv(Fs):
             outputs.append(f"{var}: {os.environ.get(var, 'Not found')}")
         return "\n".join(outputs)
 
-    def markdown(self):
+    def markdown(self, context: Dict[str, Any] = {}):
         return f"""
 ### Env
 

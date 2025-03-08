@@ -9,7 +9,14 @@ class Config(OpsmateConfig):
     token: str = Field(default="", alias="OPSMATE_TOKEN")
 
     tools: List[str] = Field(
-        default=["ShellCommand", "KnowledgeRetrieval"], alias="OPSMATE_TOOLS"
+        default=[
+            "ShellCommand",
+            "KnowledgeRetrieval",
+            "ACITool",
+            "HtmlToText",
+            "PrometheusTool",
+        ],
+        alias="OPSMATE_TOOLS",
     )
     system_prompt: str = Field(
         alias="OPSMATE_SYSTEM_PROMPT",

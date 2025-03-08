@@ -8,10 +8,10 @@ import signal
 logger = structlog.get_logger()
 
 
-async def main(worker_count: int = 10):
+async def main(worker_count: int = 10, worker_queue: str = "default"):
     engine = create_engine(
         config.db_url,
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": 20},
         # echo=True,
     )
     with engine.connect() as conn:
@@ -19,7 +19,7 @@ async def main(worker_count: int = 10):
         conn.close()
 
     session = Session(engine)
-    worker = Worker(session, worker_count)
+    worker = Worker(session, worker_count, queue_name=worker_queue)
 
     def handle_signal(signal_number, frame):
         logger.info("Received signal", signal_number=signal_number)

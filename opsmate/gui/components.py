@@ -19,7 +19,14 @@ from opsmate.polya.models import (
     Facts,
 )
 from jinja2 import Template
+import plotly.express as px
+import pandas as pd
+from opsmate.tools.prom import PrometheusTool
+from datetime import datetime
 import yaml
+import structlog
+
+logger = structlog.get_logger()
 
 
 class CellComponent:
@@ -298,6 +305,46 @@ def render_react_answer_markdown(output: ReactAnswer):
     )
 
 
+def generate_chart(tool_output: PrometheusTool):
+    query = tool_output.output
+
+    if "error" in query.output or query.dataframe is None:
+        if "error" in query.output:
+            error = query.output["error"]
+        else:
+            error = "No data to display"
+        logger.error("Error in query", error=error)
+        # generate a diagram of the error
+        fig = px.bar(
+            x=["Error"],
+            y=[1],
+            template="plotly_white",
+            title=error,
+        )
+        return fig.to_html(
+            include_plotlyjs=True, full_html=False, config={"displayModeBar": False}
+        )
+
+    df = query.dataframe
+
+    y_columns = [col for col in df.columns if col != "timestamp"]
+    fig = px.line(
+        df, x="timestamp", y=y_columns, template="plotly_white", title=query.title
+    )
+    fig.update_traces(mode="lines+markers")
+    fig.update_layout(
+        margin=dict(l=20, r=20, t=20, b=20),
+        hovermode="x unified",
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    return fig.to_html(
+        include_plotlyjs=True, full_html=False, config={"displayModeBar": False}
+    )
+
+
 def render_observation_markdown_raw(output: Observation):
     tool_out = []
     for tool_output in output.tool_outputs:
@@ -305,6 +352,12 @@ def render_observation_markdown_raw(output: Observation):
             tool_out.append(tool_output.markdown())
         else:
             tool_out.append(yaml.dump(tool_output.model_dump()))
+        # if hasattr(tool_output, "time_series"):
+        #     image_data = tool_output.time_series(show_base64_image=True)
+        #     if image_data:
+        #         tool_out.append(
+        #             f"![{image_data['title']}](data:{image_data['mime_type']};base64,{image_data['data']})"
+        #         )
     return f"""
 ## Observation
 
@@ -315,9 +368,18 @@ def render_observation_markdown_raw(output: Observation):
 
 
 def render_observation_markdown(output: Observation):
-    return Div(
-        render_observation_markdown_raw(output),
-        cls="marked prose max-w-none",
+    return (
+        Div(
+            render_observation_markdown_raw(output),
+            cls="marked prose max-w-none",
+        ),
+        *[
+            Div(
+                Safe(generate_chart(tool_output)),
+            )
+            for tool_output in output.tool_outputs
+            if isinstance(tool_output, PrometheusTool)
+        ],
     )
 
 

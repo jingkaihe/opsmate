@@ -32,6 +32,7 @@ class TaskStatus(Enum):
 
 DEFAULT_PRIORITY = 5
 DEFAULT_MAX_RETRIES = 3
+DEFAULT_QUEUE_NAME = "default"
 
 
 class SQLModel(_SQLModel, registry=registry()):
@@ -53,6 +54,7 @@ class TaskItem(SQLModel, table=True):
     updated_at: datetime = Field(default=datetime.now(UTC))
 
     priority: int = Field(default=DEFAULT_PRIORITY)
+    queue_name: str = Field(default=DEFAULT_QUEUE_NAME)
     retry_count: int = Field(default=0)
     max_retries: int = Field(default=3)
     wait_until: datetime = Field(default=datetime.now(UTC))
@@ -190,6 +192,7 @@ def enqueue_task(
     session: Session,
     fn: Callable[..., Awaitable[Any]] | Task,
     *args: List[Any],
+    queue_name: str = DEFAULT_QUEUE_NAME,
     priority: int | None = None,
     max_retries: int | None = None,
     **kwargs: Dict[str, Any],
@@ -201,6 +204,7 @@ def enqueue_task(
         session (Session): The database session to use.
         fn (Callable[..., Awaitable[Any]] | Task): The function to execute - can be a function or a Task object.
         *args (List[Any]): The arguments to pass to the function.
+        queue_name (str): The name of the queue to enqueue the task to. Defaults to DEFAULT_QUEUE_NAME.
         priority (int | None): The priority of the task. Default to DEFAULT_PRIORITY if not provided.
         max_retries (int | None): The maximum number of retries for the task. Default to DEFAULT_MAX_RETRIES if not provided.
         **kwargs (Dict[str, Any]): The keyword arguments to pass to the function.
@@ -212,6 +216,7 @@ def enqueue_task(
         func=f"{fn_module}.{fn_name}",
         args=args,
         kwargs=kwargs,
+        queue_name=queue_name,
     )
 
     if max_retries is None:
@@ -236,11 +241,12 @@ def enqueue_task(
     return task.id
 
 
-def dequeue_task(session: Session):
+def dequeue_task(session: Session, queue_name: str = DEFAULT_QUEUE_NAME):
     task = session.exec(
         select(TaskItem)
         .where(TaskItem.status == TaskStatus.PENDING)
         .where(TaskItem.wait_until <= datetime.now(UTC))
+        .where(TaskItem.queue_name == queue_name)
         .order_by(TaskItem.priority.desc())
     ).first()
 
@@ -259,7 +265,7 @@ def dequeue_task(session: Session):
         )
     )
     if result.rowcount == 0:
-        return dequeue_task(session)
+        return dequeue_task(session, queue_name=queue_name)
 
     session.refresh(task)
     return task
@@ -285,20 +291,26 @@ async def await_task_completion(
 
 class Worker:
     def __init__(
-        self, session: Session, concurrency: int = 1, context: Dict[str, Any] = {}
+        self,
+        session: Session,
+        concurrency: int = 1,
+        context: Dict[str, Any] = {},
+        queue_name: str = DEFAULT_QUEUE_NAME,
     ):
         self.session = session
         self.running = True
         self.lock = asyncio.Lock()
         self.concurrency = concurrency
         self.context = context
-
+        self.queue_name = queue_name
         if self.context.get("session") is None:
             self.context["session"] = self.session
 
     async def start(self):
         logger.info(
-            "starting dbq (database queue) worker", concurrency=self.concurrency
+            "starting dbq (database queue) worker",
+            concurrency=self.concurrency,
+            queue_name=self.queue_name,
         )
         tasks = [self._start(coroutine_id) for coroutine_id in range(self.concurrency)]
         logger.info("dbq coroutines started", concurrency=self.concurrency)
@@ -350,7 +362,7 @@ class Worker:
             logger.error("error on task before run", task_id=task.id, error=str(e))
 
     async def _run(self, coroutine_id: int):
-        task = dequeue_task(self.session)
+        task = dequeue_task(self.session, queue_name=self.queue_name)
 
         if not task:
             await asyncio.sleep(0.1)

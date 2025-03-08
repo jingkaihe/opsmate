@@ -15,7 +15,7 @@ class TestKnowledgeRetrieval(BaseTestCase):
         aconn = await tool.aconn()
         assert aconn is not None
 
-        result = await tool.run()
+        result = await tool.run(context={"with_reranking": False})
         assert result is not None
         assert result == tool.output
 

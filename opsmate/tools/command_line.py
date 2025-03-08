@@ -56,7 +56,7 @@ class ShellCommand(ToolCall[str], PresentationMixin):
         else:
             return confirmation(self)
 
-    def markdown(self):
+    def markdown(self, context: dict[str, Any] = {}):
         return f"""
 ### Command
 

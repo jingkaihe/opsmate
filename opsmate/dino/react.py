@@ -158,7 +158,7 @@ thought: {react.thoughts}
             observation_out = observation.model_dump()
             for idx, tool_output in enumerate(observation.tool_outputs):
                 if isinstance(tool_output, ToolCall):
-                    observation_out["tool_outputs"][idx] = tool_output.model_dump()
+                    observation_out["tool_outputs"][idx] = tool_output.prompt_display()
                 elif isinstance(tool_output, str):
                     observation_out["tool_outputs"][idx] = tool_output
 

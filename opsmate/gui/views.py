@@ -25,6 +25,7 @@ from opsmate.gui.components import (
     render_react_answer_markdown_raw,
 )
 from opsmate.dino.types import Message, Observation, React, ReactAnswer
+from pydantic import BaseModel
 from opsmate.dino.provider import Provider
 from opsmate.ingestions.models import IngestionRecord
 from opsmate.polya.models import (
@@ -62,6 +63,7 @@ from opsmate.gui.steps import (
 import yaml
 import asyncio
 from typing import AsyncGenerator
+from opsmate.tools.prom import PromQuery
 
 logger = structlog.get_logger()
 
@@ -313,7 +315,7 @@ async def react_streaming(
     thought_deduped = False
     stopped = False
     async for output in await reactGenerator:
-        logger.info("output", output=output)
+        logger.debug("output", output=output)
         session.refresh(cell)
 
         if cell.state == CellStateEnum.STOPPING:
@@ -1280,9 +1282,19 @@ def copy_observation(observation: Observation):
         observation=observation.observation,
     )
     tool_outputs = []
-    for output in observation.tool_outputs:
-        output_copy = output.__class__(**output.model_dump())
-        output_copy.output = output.output
-        tool_outputs.append(output_copy)
+    for tool_output in observation.tool_outputs:
+        tool_output_copy = tool_output.__class__(**tool_output.model_dump())
+        # tool_output_copy.output = tool_output.output
+        if hasattr(tool_output.output, "output"):
+            if isinstance(tool_output.output, PromQuery):
+                tool_output_copy.output = PromQuery(**tool_output.output.model_dump())
+                tool_output_copy.output._output = tool_output.output.output
+            else:
+                tool_output_copy.output = tool_output.output.__class__(
+                    **tool_output.output.model_dump()
+                )
+        else:
+            tool_output_copy.output = tool_output.output
+        tool_outputs.append(tool_output_copy)
     ob.tool_outputs = tool_outputs
     return ob

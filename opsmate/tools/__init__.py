@@ -18,6 +18,7 @@ from .system import (
     SysEnv,
     SysStats,
 )
+from .prom import PrometheusTool
 
 __all__ = [
     "current_time",
@@ -39,4 +40,5 @@ __all__ = [
     "FileStats",
     "SysEnv",
     "SysStats",
+    "PrometheusTool",
 ]

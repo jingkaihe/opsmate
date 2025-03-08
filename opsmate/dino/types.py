@@ -18,6 +18,7 @@ from abc import ABC, abstractmethod
 import inspect
 import traceback
 import warnings
+import os
 
 warnings.filterwarnings("ignore", message="fields may not start with an underscore")
 logger = structlog.get_logger(__name__)
@@ -136,7 +137,11 @@ class ToolCall(BaseModel, Generic[OutputType]):
                 tool=self.__class__.__name__,
                 stack=traceback.format_exc(),
             )
-            self.output = f"Error executing tool {self.__class__.__name__}: {str(e)}"
+            self.output = {
+                "error": str(e),
+                "message": "error executing tool",
+                "stack": traceback.format_exc(),
+            }
         return self.output
 
     @computed_field
@@ -157,10 +162,21 @@ class ToolCall(BaseModel, Generic[OutputType]):
         sig = inspect.signature(self.__call__)
         return "context" in sig.parameters
 
+    def prompt_display(self):
+        """
+        prompt_display is the method that is called to display the tool call in the prompt.
+
+        By default it returns the model_dump_json of the tool call.
+        The reason we need this is because we want the output to be customisable.
+        Especially when the tool call emits large amount of data, we don't want to
+        over flow the context window.
+        """
+        return self.model_dump_json()
+
 
 class PresentationMixin(ABC):
     @abstractmethod
-    def markdown(self):
+    def markdown(self, context: dict[str, Any] = {}):
         pass
 
 

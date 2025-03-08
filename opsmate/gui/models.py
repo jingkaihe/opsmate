@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import List, Dict
 from sqlmodel import Relationship
 import structlog
-from opsmate.dino.types import Message, Observation
+from opsmate.dino.types import Message, Observation, ToolCall
 from opsmate.dino.react import react
 from opsmate.dino import dino
 from sqlalchemy.orm import registry
@@ -398,8 +398,12 @@ def gen_k8s_simple(config: Config):
     return instruction
 
 
-def normalize_output_format(output: list | str | int | float | dict | BaseModel):
+def normalize_output_format(
+    output: list | str | int | float | dict | BaseModel | ToolCall,
+):
     match output:
+        case ToolCall():
+            return output.prompt_display()
         case BaseModel():
             return output.model_dump()
         case str() | int() | float():

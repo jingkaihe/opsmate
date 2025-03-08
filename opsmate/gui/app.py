@@ -54,7 +54,7 @@ logger = structlog.get_logger()
 # start a sqlite database
 engine = sqlmodel.create_engine(
     config.db_url,
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False, "timeout": 20},
     # echo=True
 )
 

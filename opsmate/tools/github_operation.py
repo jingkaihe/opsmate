@@ -71,7 +71,7 @@ class GithubCloneAndCD(ToolCall[Result], PresentationMixin):
         except Exception as e:
             return Result(error=f"Failed to clone repository: {e}")
 
-    def markdown(self):
+    def markdown(self, context: dict[str, Any] = {}):
         if self.output.error:
             return f"Failed to clone repository: {self.output.error}"
         else:
@@ -132,7 +132,7 @@ class GithubRaisePR(ToolCall[Result], PresentationMixin):
 
         return Result(output="PR raised successfully")
 
-    def markdown(self):
+    def markdown(self, context: dict[str, Any] = {}):
         if self.output.error:
             return f"Failed to raise PR: {self.output.error}"
         else:

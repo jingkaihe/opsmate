@@ -1,6 +1,6 @@
 from opsmate.dino.types import ToolCall, PresentationMixin
 from pydantic import BaseModel, Field, model_validator
-from typing import Dict, List, Optional, ClassVar, Self
+from typing import Dict, List, Optional, ClassVar, Self, Any
 from collections import defaultdict
 from pathlib import Path
 from opsmate.tools.utils import maybe_truncate_text
@@ -511,7 +511,7 @@ class ACITool(ToolCall[Result], PresentationMixin):
             )
             return f"Failed to search file: {e}"
 
-    def markdown(self):
+    def markdown(self, context: dict[str, Any] = {}):
         match self.command:
             case "search":
                 return self._render_search_markdown()

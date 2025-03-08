@@ -9,6 +9,7 @@ from typing import (
     TypeVar,
     Awaitable,
     Type,
+    Optional,
 )
 from pydantic import BaseModel
 import inspect
@@ -18,6 +19,7 @@ from .types import Message, ToolCall
 from .utils import args_dump
 import structlog
 from instructor import AsyncInstructor
+from tenacity import AsyncRetrying, stop_after_attempt, wait_fixed
 import asyncio
 
 logger = structlog.get_logger(__name__)
@@ -30,7 +32,7 @@ T = TypeVar("T")
 def dino(
     model: str,
     response_model: Type[T],
-    after_hook: Callable | Coroutine = None,
+    after_hook: Optional[Callable | Coroutine] = None,
     tools: List[ToolCall] = [],
     client: AsyncInstructor = None,
     **kwargs: Any,
@@ -60,7 +62,7 @@ def dino(
             - presence_penalty
             - system: used by Anthropic as a system prompt
             - context: a dictionary for Pydantic model validation
-
+            - max_retries: the number of retries for the tool call, defaults to 3
     Example:
 
     class UserInfo(BaseModel):
@@ -165,26 +167,38 @@ def dino(
                 raise ValueError("Prompt must be a string, BaseModel, or List[Message]")
 
             tool_call_ctx = ikwargs.get("context", {})
-            tool_outputs = []
+            tool_call_ctx["dino_model"] = _model
+
+            tool_outputs: List[ToolCall] = []
             if _tools:
                 initial_response = await provider.chat_completion(
                     messages=messages,
                     response_model=Iterable[Union[tuple(_tools)]],
                     client=_client,
+                    max_retries=AsyncRetrying(
+                        stop=stop_after_attempt(ikwargs.get("max_retries", 3)),
+                        wait=wait_fixed(1),
+                    ),
                     **ikwargs,
                 )
                 tasks = [resp.run(context=tool_call_ctx) for resp in initial_response]
                 await asyncio.gather(*tasks)
 
                 for resp in initial_response:
+                    # logger.info("individual tool output before", tool=resp.output)
                     logger.debug("Tool called", tool=resp.model_dump_json())
-                    messages.append(Message.user(resp.model_dump_json()))
+                    messages.append(Message.user(resp.prompt_display()))
+                    # logger.info("individual tool output after", tool=resp.output)
                     tool_outputs.append(resp)
 
             response = await provider.chat_completion(
                 messages=messages,
                 response_model=response_model,
                 client=_client,
+                max_retries=AsyncRetrying(
+                    stop=stop_after_attempt(ikwargs.get("max_retries", 3)),
+                    wait=wait_fixed(1),
+                ),
                 **ikwargs,
             )
 

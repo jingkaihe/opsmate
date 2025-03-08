@@ -5,7 +5,7 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-VERSION=$(shell awk '/^\[tool\.poetry\]/{p=1;next} /^\[/{p=0} p&&/^version = /{print}' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+VERSION=$(shell awk '/^\[project\]/{p=1;next} /^\[/{p=0} p&&/^version = /{print}' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
 IMAGE_NAME=opsmate
 CONTAINER_REGISTRY=ghcr.io/jingkaihe
 

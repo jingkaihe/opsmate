@@ -126,6 +126,7 @@ def common_params(func):
         review = kwargs.pop("review", False)
         kwargs["tool_call_context"] = {
             "max_output_length": kwargs.pop("max_output_length"),
+            "in_terminal": True,
         }
         if review:
             kwargs["tool_call_context"]["confirmation"] = confirmation_prompt
@@ -232,7 +233,7 @@ async def run(
 
     if not no_tool_output:
         for tool_call in observation.tool_outputs:
-            console.print(Markdown(tool_call.markdown()))
+            console.print(Markdown(tool_call.markdown(context={"in_terminal": True})))
         console.print(Markdown(observation.observation))
     else:
         print(observation.observation)
@@ -273,6 +274,12 @@ async def run(
     is_flag=True,
     help="Print only the answer",
 )
+@click.option(
+    "--tool-calls-per-action",
+    default=1,
+    show_default=True,
+    help="Number of tool calls per action",
+)
 @common_params
 @traceit
 @coro
@@ -286,6 +293,7 @@ async def solve(
     system_prompt,
     no_tool_output,
     answer_only,
+    tool_calls_per_action,
 ):
     """
     Solve a problem with the OpsMate.
@@ -307,6 +315,7 @@ async def solve(
         max_iter=max_iter,
         tools=tools,
         tool_call_context=tool_call_context,
+        tool_calls_per_action=tool_calls_per_action,
     ):
         match output:
             case React():
@@ -332,7 +341,9 @@ async def solve(
                 console.print(Markdown("## Observation"))
                 if not no_tool_output:
                     for tool_call in output.tool_outputs:
-                        console.print(Markdown(tool_call.markdown()))
+                        console.print(
+                            Markdown(tool_call.markdown(context={"in_terminal": True}))
+                        )
                 console.print(Markdown(output.observation))
             case ReactAnswer():
                 if answer_only:
@@ -380,10 +391,24 @@ Commands:
     show_default=True,
     help="Context to be added to the prompt. Run the list-contexts command to see all the contexts available.",
 )
+@click.option(
+    "--tool-calls-per-action",
+    default=1,
+    show_default=True,
+    help="Number of tool calls per action",
+)
 @common_params
 @traceit
 @coro
-async def chat(model, max_iter, context, tools, tool_call_context, system_prompt):
+async def chat(
+    model,
+    max_iter,
+    context,
+    tools,
+    tool_call_context,
+    system_prompt,
+    tool_calls_per_action,
+):
     """
     Chat with the OpsMate.
     """
@@ -422,6 +447,7 @@ async def chat(model, max_iter, context, tools, tool_call_context, system_prompt
             tools=tools,
             chat_history=chat_history,
             tool_call_context=tool_call_context,
+            tool_calls_per_action=tool_calls_per_action,
         )
         chat_history.append(Message.user(user_input))
 
@@ -454,7 +480,7 @@ async def chat(model, max_iter, context, tools, tool_call_context, system_prompt
 """
                     for tool_call in output.tool_outputs:
                         tp += f"""
-    {tool_call.markdown()}
+    {tool_call.markdown(context={"in_terminal": True})}
     """
                     tp += f"""
 ### Observation
@@ -548,9 +574,14 @@ async def reset(skip_confirm):
     show_default=True,
     help="Number of uvicorn workers to serve on",
 )
+@click.option(
+    "--dev",
+    is_flag=True,
+    help="Run in development mode",
+)
 @auto_migrate
 @coro
-async def serve(host, port, workers):
+async def serve(host, port, workers, dev):
     """
     Start the OpsMate server.
     """
@@ -563,7 +594,7 @@ async def serve(host, port, workers):
     await kb_ingest()
     engine = create_engine(
         config.db_url,
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": 20},
         # echo=True,
     )
     with engine.connect() as conn:
@@ -573,6 +604,15 @@ async def serve(host, port, workers):
     with Session(engine) as session:
         seed_blueprints(session)
 
+    if dev:
+        await uvicorn.run(
+            "opsmate.apiserver.apiserver:app",
+            host=host,
+            port=port,
+            reload=True,
+            reload_dirs=["opsmate"],
+        )
+        return
     if workers > 1:
         uvicorn.run(
             "opsmate.apiserver.apiserver:app",
@@ -581,7 +621,11 @@ async def serve(host, port, workers):
             workers=workers,
         )
     else:
-        config = uvicorn.Config("opsmate.apiserver.apiserver:app", host=host, port=port)
+        config = uvicorn.Config(
+            "opsmate.apiserver.apiserver:app",
+            host=host,
+            port=port,
+        )
         server = uvicorn.Server(config)
         await server.serve()
 
@@ -594,9 +638,16 @@ async def serve(host, port, workers):
     show_default=True,
     help="Number of concurrent background workers",
 )
+@click.option(
+    "-q",
+    "--queue",
+    default="default",
+    show_default=True,
+    help="Queue to use for the worker",
+)
 @auto_migrate
 @coro
-async def worker(workers):
+async def worker(workers, queue):
     """
     Start the OpsMate worker.
     """
@@ -607,11 +658,67 @@ async def worker(workers):
 
     try:
         await init_table()
-        task = asyncio.create_task(dbqapp.main(workers))
+        task = asyncio.create_task(dbqapp.main(workers, queue))
         await task
     except KeyboardInterrupt:
         task.cancel()
         await task
+
+
+@opsmate_cli.command()
+@click.option(
+    "--prometheus-endpoint",
+    default=lambda: os.getenv("prometheus_endpoint", "http://localhost:9090"),
+    show_default=True,
+    help="Prometheus endpoint",
+)
+@click.option(
+    "--prometheus-user-id",
+    # prompt=True,
+    default=lambda: os.getenv("prometheus_user_id", ""),
+    show_default=True,
+    help="Prometheus user id",
+)
+@click.option(
+    "--prometheus-api-key",
+    # prompt=True,
+    default=lambda: os.getenv("prometheus_api_key", ""),
+    show_default=True,
+    hide_input=True,
+    help="Prometheus api key",
+)
+@coro
+async def ingest_metrics(prometheus_endpoint, prometheus_user_id, prometheus_api_key):
+    """
+    Ingest metrics metadata into the knowledge base.
+    Note this only enqueues the taks to ingest metrics. To execute the actual ingestion in the background, run `opsmate worker`.
+    Please run: `opsmate worker -w 1 -q lancedb-batch-ingest`
+    """
+    from opsmate.tools.prom import PromQL
+    from opsmate.knowledgestore.models import init_table, aconn
+    from sqlmodel import create_engine, text, Session
+    from opsmate.libs.config import config
+
+    await init_table()
+    dbconn = await aconn()
+    table = await dbconn.open_table("knowledge_store")
+
+    prom = PromQL(
+        endpoint=prometheus_endpoint,
+        user_id=prometheus_user_id,
+        api_key=prometheus_api_key,
+    )
+
+    engine = create_engine(
+        config.db_url,
+        connect_args={"check_same_thread": False, "timeout": 20},
+        # echo=True,
+    )
+    with engine.connect() as conn:
+        conn.execute(text("PRAGMA journal_mode=WAL"))
+        conn.close()
+    with Session(engine) as session:
+        await prom.ingest_metrics(session)
 
 
 @opsmate_cli.command()
@@ -653,7 +760,7 @@ def list_models():
 )
 @click.option(
     "--path",
-    default="/",
+    default="",
     show_default=True,
     help="Path to the knowledge base",
 )
@@ -682,7 +789,7 @@ async def ingest(source, path, glob):
 
     engine = create_engine(
         config.db_url,
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": 20},
         # echo=True,
     )
     with engine.connect() as conn:

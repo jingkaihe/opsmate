@@ -1,4 +1,10 @@
-from opsmate.tools import ShellCommand, KnowledgeRetrieval, ACITool, HtmlToText
+from opsmate.tools import (
+    ShellCommand,
+    KnowledgeRetrieval,
+    ACITool,
+    HtmlToText,
+    PrometheusTool,
+)
 from opsmate.dino.context import context
 import platform
 
@@ -10,6 +16,7 @@ import platform
         KnowledgeRetrieval,
         ACITool,
         HtmlToText,
+        PrometheusTool,
     ],
 )
 async def cli_ctx() -> str:

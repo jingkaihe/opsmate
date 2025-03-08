@@ -1,4 +1,10 @@
-from opsmate.tools import ShellCommand, KnowledgeRetrieval, ACITool, HtmlToText
+from opsmate.tools import (
+    ShellCommand,
+    KnowledgeRetrieval,
+    ACITool,
+    HtmlToText,
+    PrometheusTool,
+)
 import subprocess
 from opsmate.dino.context import context
 
@@ -10,6 +16,7 @@ from opsmate.dino.context import context
         KnowledgeRetrieval,
         ACITool,
         HtmlToText,
+        PrometheusTool,
     ],
 )
 async def k8s_ctx() -> str:
@@ -25,7 +32,7 @@ You are a world class SRE who is an expert in kubernetes. You are tasked to help
 - When you look into any issues scoped to the namespaces, look into the events in the given namespaces.
 - When you execute `kubectl exec -it ...` use /bin/sh instead of bash.
 - Always use `kubectl get --show-labels` for querying resources when `-ojson` or `-oyaml` are not being used.
-- Always make sure that you are using the right context and namespace. For example never do `kuebctl get po xxx` without specifying the namespace.
+- When running kubectl, always make sure that you are using the right context and namespace. For example never do `kuebctl get po xxx` without specifying the namespace.
 </important>
 
 <available_k8s_contexts>

@@ -1,7 +1,7 @@
 # Build stage
 FROM python:3.12.3-slim-bullseye AS builder
 
-ENV POETRY_VERSION=1.8.4 \
+ENV POETRY_VERSION=2.1.1 \
     POETRY_VIRTUALENVS_CREATE=false \
     POETRY_CACHE_DIR='/var/cache/pypoetry' \
     PIP_NO_CACHE_DIR=off \
