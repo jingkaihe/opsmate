@@ -21,6 +21,7 @@ from opsmate.config import config
 from opsmate.gui.config import config as gui_config
 from opsmate.plugins import PluginRegistry
 from opsmate.runtime import Runtime
+from opsmate.cli.formatting import OpsmateGroup, OpsmateCommand, get_console
 
 from functools import cache
 from typing import Dict
@@ -36,7 +37,7 @@ import opsmate.tools  # noqa: F401
 import traceback
 import json
 
-console = Console()
+console = get_console()
 
 
 @cache
@@ -65,13 +66,31 @@ class StdinArgument(click.ParamType):
         return value
 
 
-@click.group()
-def opsmate_cli():
+@click.group(cls=OpsmateGroup)
+@click.option(
+    "--no-color",
+    is_flag=True,
+    default=True,
+    help="Disable colored output, alternatively use OPSMATE_COLOR environment variable [1/true/on/Y/y/yes], or [0/false/no/N/n/off]",
+)
+@click.pass_context
+def opsmate_cli(ctx, no_color):
     """
     Opsmate is an SRE AI assistant that helps you manage production environment.
     This is the cli tool to interact with Opsmate.
     """
+    ctx.ensure_object(dict)
+    ctx.obj["no_color"] = no_color
     start_trace(spans_to_discard=["dbq.dequeue_task"])
+
+
+def opsmate_command(**kwargs):
+    """Decorator to create an opsmate command with custom formatting."""
+    def decorator(f):
+        # Set cls=OpsmateCommand for enhanced help formatting
+        kwargs.setdefault('cls', OpsmateCommand)
+        return opsmate_cli.command(**kwargs)(f)
+    return decorator
 
 
 def config_params(cli_config=config):
@@ -294,7 +313,7 @@ Edit the execution if needed, then press Enter to execute:
         return False
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @click.argument("instruction", type=StdinArgument())
 @click.option(
     "-nt",
@@ -388,7 +407,7 @@ async def run(
         exit(1)
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @click.argument("instruction", type=StdinArgument())
 @click.option(
     "-i",
@@ -436,6 +455,10 @@ async def solve(
 ):
     """
     Solve a problem with the Opsmate.
+    
+    Examples:
+      opsmate solve "Why is my CPU usage spiking?"
+      opsmate solve --context terraform "What is the status of my EC2 instances?"
     """
     ctx = config.opsmate_context()
 
@@ -528,7 +551,7 @@ Commands:
 """
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @click.option(
     "-i",
     "--max-iter",
@@ -652,7 +675,7 @@ async def chat(
         opsmate_says("Goodbye!")
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @config_params()
 def list_contexts(config):
     """
@@ -668,7 +691,7 @@ def list_contexts(config):
     console.print(table)
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @config_params()
 @click.option("--skip-confirm", is_flag=True, help="Skip confirmation")
 @coro
@@ -733,7 +756,7 @@ async def reset(skip_confirm, config):
     remove_embeddings_db_path(config.embeddings_db_path)
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @click.option(
     "-h", "--host", default="0.0.0.0", show_default=True, help="Host to serve on"
 )
@@ -812,7 +835,7 @@ async def serve(host, port, workers, dev, **kwargs):
         await server.serve()
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @click.option(
     "-w",
     "--workers",
@@ -846,7 +869,7 @@ async def worker(workers, queue, config):
         await task
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @click.option(
     "-i",
     "--interval-seconds",
@@ -893,7 +916,7 @@ Waiting for them to complete before scheduling the next one...
         await schedule_reindex_table(session, interval_seconds)
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @click.option(
     "--prometheus-endpoint",
     default=lambda: os.getenv("PROMETHEUS_ENDPOINT", "") or "http://localhost:9090",
@@ -945,7 +968,7 @@ async def ingest_prometheus_metrics_metadata(
         await prom.ingest_metrics(session)
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @config_params()
 @traceit(exclude=["config"])
 def list_tools(config):
@@ -962,7 +985,7 @@ def list_tools(config):
     console.print(table)
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @click.option(
     "--provider",
     help="Provider to list the models for",
@@ -990,7 +1013,7 @@ def list_models(provider):
     console.print(table)
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @click.option(
     "--source",
     help="Source of the knowledge base fs:////path/to/kb or github:///owner/repo[:branch]",
@@ -1072,7 +1095,7 @@ alembic_cfg_path = os.path.join(
 )
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @coro
 async def list_runtimes():
     """
@@ -1088,7 +1111,7 @@ async def list_runtimes():
     console.print(table)
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @click.option(
     "-r",
     "--revision",
@@ -1106,7 +1129,7 @@ def db_migrate(revision):
     click.echo(f"Database upgraded to: {revision}")
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @click.option(
     "-r",
     "--revision",
@@ -1124,7 +1147,7 @@ def db_rollback(revision):
     click.echo(f"Database downgraded to: {revision}")
 
 
-@opsmate_cli.command()
+@opsmate_command()
 def db_revisions():
     """
     List all the revisions available.
@@ -1136,7 +1159,7 @@ def db_revisions():
     command.history(alembic_cfg)
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @click.argument("packages", nargs=-1, required=False)
 @click.option(
     "-U",
@@ -1178,7 +1201,7 @@ def install(packages, upgrade, force_reinstall, editable, no_cache_dir):
     run_module("pip", run_name="__main__")
 
 
-@opsmate_cli.command()
+@opsmate_command()
 @click.argument("packages", nargs=-1, required=True)
 @click.option(
     "-y",
@@ -1199,7 +1222,7 @@ def uninstall(packages, yes):
     run_module("pip", run_name="__main__")
 
 
-@opsmate_cli.command()
+@opsmate_command()
 def version():
     """
     Show the version of the Opsmate.

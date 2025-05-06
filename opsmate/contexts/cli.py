@@ -38,7 +38,7 @@ async def cli_ctx(runtimes: dict[str, Runtime] = {}) -> str:
     template = Template(
         """
   <assistant>
-  You are a world class SRE who is good at solving problems. You are given access to the terminal for solving problems.
+  You are a world class SRE who excells at solving problems. You are given access to the terminal for solving problems.
   </assistant>
 
   You have access to the following runtimes:
